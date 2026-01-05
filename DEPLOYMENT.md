@@ -213,14 +213,19 @@ sudo systemctl status gledger-sync.timer
    cp .github/workflows/sync-accounts.yml.example .github/workflows/sync-accounts.yml
    ```
 
-2. **Create repository secrets** (Settings → Secrets and variables → Actions):
+2. **Create repository secrets** (Settings → Secrets and variables → Actions → Secrets):
    - `GLEDGER_SHEET_ID`: Your Google Sheet ID
    - `GLEDGER_SERVICE_ACCOUNT_KEY`: Contents of service-account-key.json (entire JSON file)
    - `GLEDGER_SIMPLEFIN_TOKEN`: Your SimpleFIN access token
    - `GLEDGER_SNAPSHOT_ENCRYPTION_KEY`: Random encryption key for snapshot cache (generate with: `openssl rand -base64 32`)
    - `GLEDGER_SIMPLEFIN_BASE_URL` (optional): SimpleFIN API base URL (defaults to `https://beta-bridge.simplefin.org/simplefin`)
 
-3. **Adjust the schedules** (edit the workflow files):
+3. **Enable syncing** (Settings → Secrets and variables → Actions → Variables):
+   - Create a new repository variable named `SYNC_ENABLED` with value `true`
+   - This acts as a safety switch to prevent accidental syncing
+   - To pause syncing later, delete this variable or set it to `false`
+
+4. **Adjust the schedules** (edit the workflow files):
    - **Transactions** (`.github/workflows/sync-transactions.yml`): Default is twice daily at 6am and 6pm UTC
      ```yaml
      schedule:
@@ -232,11 +237,11 @@ sudo systemctl status gledger-sync.timer
        - cron: '0 3 * * 0'  # 3am UTC on Sundays
      ```
 
-4. **Enable GitHub Actions**:
+5. **Enable GitHub Actions**:
    - Go to repository Settings → Actions → General
    - Allow actions to run
 
-5. **Commit and push** the workflow files:
+6. **Commit and push** the workflow files:
    ```bash
    git add .github/workflows/sync-*.yml
    git commit -m "Enable automated sync via GitHub Actions"
@@ -246,6 +251,8 @@ sudo systemctl status gledger-sync.timer
 ### Features
 
 - **Separate Schedules**: Transaction sync runs frequently, account sync runs weekly
+- **CI Verification**: Workflows verify that CI tests passed before syncing (prevents syncing from broken code)
+- **Pause Toggle**: `SYNC_ENABLED` variable allows pausing/resuming syncing without modifying workflows
 - **CI Mode**: Uses `--ci-mode` flag to minimize sensitive data in logs
 - **Encrypted Snapshot Caching**: Snapshots are encrypted with AES256 using your key before being stored in GitHub Actions cache (defense in depth)
 - **Configurable SimpleFIN URL**: Override the SimpleFIN API base URL if using a custom instance
@@ -259,12 +266,36 @@ View sync status:
 2. Click on "Sync Transactions" or "Sync Accounts" workflow
 3. See run history and logs
 
+### Pausing and Resuming Syncing
+
+**To pause syncing:**
+- Go to Settings → Secrets and variables → Actions → Variables
+- Delete the `SYNC_ENABLED` variable or change its value to anything other than `true`
+- Scheduled workflows will skip syncing until re-enabled
+
+**To resume syncing:**
+- Go to Settings → Secrets and variables → Actions → Variables
+- Set `SYNC_ENABLED` back to `true`
+
+**Why pause?**
+- During vacation or travel when you don't want automated syncing
+- When troubleshooting issues with your setup
+- During SimpleFIN or Google Sheets maintenance windows
+- When you want to manually control all syncing
+
 ### Troubleshooting
 
 **Workflow not running:**
 - Check Settings → Actions → General (actions must be enabled)
+- Verify `SYNC_ENABLED` variable is set to `true`
 - Verify cron syntax is correct
 - Remember: GitHub Actions has 5-minute minimum interval
+
+**Sync skipped with "CI checks have not passed":**
+- The workflow detected that CI tests failed on the current commit
+- Fix the failing tests and commit the fix
+- The next scheduled run will sync once CI passes
+- This is a safety feature to prevent syncing from broken code
 
 **Secrets not working:**
 - Ensure secret names match exactly (case-sensitive)
