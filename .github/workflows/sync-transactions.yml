@@ -1,0 +1,73 @@
+# G-Ledger Transaction Sync Workflow (EXAMPLE - DO NOT USE AS-IS)
+#
+# ⚠️  SECURITY & PRIVACY CONSIDERATIONS ⚠️
+#
+# Before enabling this workflow, understand the tradeoffs:
+#
+# 1. CREDENTIALS IN GITHUB:
+#    - Service account key and SimpleFIN token stored as GitHub secrets
+#    - GitHub (Microsoft) can technically access these secrets
+#    - Requires trusting GitHub's security infrastructure
+#
+# 2. TRANSACTION DATA:
+#    - Transaction data flows through GitHub Actions infrastructure
+#    - Action logs may contain summary information (counts, errors)
+#    - CI mode reduces detailed logging, but metadata still present
+#
+# 3. DEPENDENCIES:
+#    - Relies on GitHub Actions availability
+#    - Subject to GitHub's usage limits and policies
+#    - Less "self-hosted" than running on your own server
+#
+# 4. RECOMMENDED FOR:
+#    - Users comfortable with GitHub handling credentials
+#    - Those who want zero-infrastructure automated syncing
+#    - Scenarios where convenience outweighs self-hosting principles
+#
+# 5. NOT RECOMMENDED FOR:
+#    - Highly sensitive financial setups requiring strict data isolation
+#    - Users wanting complete control over where credentials are stored
+#    - Scenarios where "own your data" is a hard requirement
+#
+# To enable this workflow:
+#
+# 1. Rename this file to: .github/workflows/sync-transactions.yml
+#
+# 2. Create GitHub repository secrets (Settings → Secrets → Actions):
+#    - GLEDGER_SHEET_ID: Your Google Sheet ID
+#    - GLEDGER_SERVICE_ACCOUNT_KEY: Contents of service-account-key.json (paste entire JSON)
+#    - GLEDGER_SIMPLEFIN_TOKEN: Your SimpleFIN access token
+#    - GLEDGER_SNAPSHOT_ENCRYPTION_KEY: Random encryption key for cache (generate with: openssl rand -base64 32)
+#    - GLEDGER_SIMPLEFIN_BASE_URL (optional): SimpleFIN API base URL (defaults to https://beta-bridge.simplefin.org/simplefin)
+#
+# 3. Adjust the schedule below to your preference (minimum 5 minute intervals)
+#
+# 4. Enable Actions in your repository settings
+
+name: Sync Transactions
+
+on:
+  # Run twice daily at 6am and 6pm UTC
+  schedule:
+    - cron: '0 6,18 * * *'
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Days to sync (default: 30)'
+        required: false
+        default: '30'
+
+jobs:
+  sync-transactions:
+    uses: ./.github/workflows/sync-reusable.yml
+    with:
+      mode: 'transactions'
+      days: ${{ github.event.inputs.days || '14' }}
+    secrets:
+      GLEDGER_SHEET_ID: ${{ secrets.GLEDGER_SHEET_ID }}
+      GLEDGER_SERVICE_ACCOUNT_KEY: ${{ secrets.GLEDGER_SERVICE_ACCOUNT_KEY }}
+      GLEDGER_SIMPLEFIN_TOKEN: ${{ secrets.GLEDGER_SIMPLEFIN_TOKEN }}
+      GLEDGER_SNAPSHOT_ENCRYPTION_KEY: ${{ secrets.GLEDGER_SNAPSHOT_ENCRYPTION_KEY }}
+      GLEDGER_SIMPLEFIN_BASE_URL: ${{ secrets.GLEDGER_SIMPLEFIN_BASE_URL }}
