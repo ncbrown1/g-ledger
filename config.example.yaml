@@ -1,0 +1,27 @@
+# G-Ledger Configuration Example
+# Copy this file to config.yaml and fill in your values
+# IMPORTANT: Never commit config.yaml to git (it's in .gitignore)
+
+# Google Sheets Configuration
+service_account_key_path: "/path/to/service-account-key.json"
+sheet_id: "your-google-sheet-id-here"
+
+# SimpleFIN Configuration
+simplefin_base_url: "https://bridge.simplefin.org/simplefin"
+simplefin_setup_token: ""  # Use once during initial setup, then remove
+simplefin_access_url: ""   # Obtained from setup, keep this
+
+# Git Snapshot Configuration
+snapshot_dir: "./snapshots"  # Local git repository for backups
+
+# Logging Configuration
+log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+# Optional: Rate Limiting (Google Sheets API)
+# max_requests_per_minute: 60  # Default: 60
+
+# Optional: Sync Configuration
+# sync_window_days: 90  # How far back to sync transactions (default: 90)
+
+# Optional: Reconciliation Configuration
+# reconciliation_tolerance: 0.01  # Balance discrepancy tolerance in dollars

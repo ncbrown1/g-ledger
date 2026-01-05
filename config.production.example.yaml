@@ -1,0 +1,28 @@
+# G-Ledger Production Configuration
+# Copy this to ~/.config/gledger/config.yaml
+#
+# NOTE: Relative paths are resolved relative to this config file's directory.
+# So "service-account-key.json" will look in ~/.config/gledger/ when this file
+# is located at ~/.config/gledger/config.yaml
+
+# Google Sheets Configuration
+sheet_id: "YOUR_GOOGLE_SHEET_ID_HERE"
+service_account_key_path: "service-account-key.json"  # Relative to config file location
+
+# SimpleFIN Configuration
+simplefin_token: "YOUR_SIMPLEFIN_TOKEN_HERE"
+# Optional: Override SimpleFIN base URL
+# simplefin_base_url: "https://bridge.simplefin.org/simplefin"
+
+# Sync Settings
+window_days: 30  # Number of days to fetch (30 = last 30 days)
+                 # WARNING: SimpleFIN typically provides 90 days max (varies by institution)
+                 # Some banks only provide 30-60 days of history
+                 # Recommendation: Sync within 90 days of connecting accounts
+
+# Snapshot Settings
+# Default: ~/gledger-snapshots (automatically set if not specified)
+# snapshot_dir: "~/gledger-snapshots"
+
+# Logging
+log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR

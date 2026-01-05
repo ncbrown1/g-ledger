@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source venv/bin/activate)",
+      "Bash(python -m pytest:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(make format-check:*)",
+      "Bash(make format:*)",
+      "Bash(make lint-check:*)",
+      "Bash(make lint:*)",
+      "Bash(python -m ruff:*)",
+      "Bash(cat:*)",
+      "Bash(python -m black:*)",
+      "Bash(gledger --help:*)",
+      "Bash(python3:*)",
+      "Bash(pip3:*)",
+      "Bash(make dev-install:*)",
+      "Bash(make test:*)",
+      "Bash(make check:*)",
+      "Bash(make:*)",
+      "Bash(SKIP_VENV=1 make format-check:*)",
+      "Bash(.venv/bin/python3:*)",
+      "Bash(done)"
+    ]
+  }
+}
