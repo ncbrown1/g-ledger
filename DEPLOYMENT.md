@@ -185,6 +185,96 @@ sudo systemctl start gledger-sync.timer
 sudo systemctl status gledger-sync.timer
 ```
 
+## Automated Sync with GitHub Actions (Alternative)
+
+**⚠️ Security Considerations**: This approach stores credentials in GitHub and runs syncs through GitHub's infrastructure. Read the workflow files in `.github/workflows/` for detailed security implications before using.
+
+### When to Use GitHub Actions
+
+**Good for:**
+- Zero infrastructure (no server or cron setup)
+- Built-in secrets management
+- Easy monitoring via GitHub UI
+- Users comfortable with GitHub handling credentials
+
+**Not recommended for:**
+- Highly sensitive setups requiring strict data isolation
+- Scenarios where "own your data" is a hard requirement
+- Users wanting complete control over credential storage
+
+### Setup Instructions
+
+1. **Copy the example workflows**:
+   ```bash
+   # Transaction sync (runs twice daily)
+   cp .github/workflows/sync-transactions.yml.example .github/workflows/sync-transactions.yml
+
+   # Account sync (runs weekly)
+   cp .github/workflows/sync-accounts.yml.example .github/workflows/sync-accounts.yml
+   ```
+
+2. **Create repository secrets** (Settings → Secrets and variables → Actions):
+   - `GLEDGER_SHEET_ID`: Your Google Sheet ID
+   - `GLEDGER_SERVICE_ACCOUNT_KEY`: Contents of service-account-key.json (entire JSON file)
+   - `GLEDGER_SIMPLEFIN_TOKEN`: Your SimpleFIN access token
+   - `GLEDGER_SNAPSHOT_ENCRYPTION_KEY`: Random encryption key for snapshot cache (generate with: `openssl rand -base64 32`)
+   - `GLEDGER_SIMPLEFIN_BASE_URL` (optional): SimpleFIN API base URL (defaults to `https://beta-bridge.simplefin.org/simplefin`)
+
+3. **Adjust the schedules** (edit the workflow files):
+   - **Transactions** (`.github/workflows/sync-transactions.yml`): Default is twice daily at 6am and 6pm UTC
+     ```yaml
+     schedule:
+       - cron: '0 6,18 * * *'  # 6am and 6pm UTC daily
+     ```
+   - **Accounts** (`.github/workflows/sync-accounts.yml`): Default is weekly on Sundays at 3am UTC
+     ```yaml
+     schedule:
+       - cron: '0 3 * * 0'  # 3am UTC on Sundays
+     ```
+
+4. **Enable GitHub Actions**:
+   - Go to repository Settings → Actions → General
+   - Allow actions to run
+
+5. **Commit and push** the workflow files:
+   ```bash
+   git add .github/workflows/sync-*.yml
+   git commit -m "Enable automated sync via GitHub Actions"
+   git push
+   ```
+
+### Features
+
+- **Separate Schedules**: Transaction sync runs frequently, account sync runs weekly
+- **CI Mode**: Uses `--ci-mode` flag to minimize sensitive data in logs
+- **Encrypted Snapshot Caching**: Snapshots are encrypted with AES256 using your key before being stored in GitHub Actions cache (defense in depth)
+- **Configurable SimpleFIN URL**: Override the SimpleFIN API base URL if using a custom instance
+- **Manual Triggering**: Can run syncs on-demand via GitHub UI with custom parameters
+- **DRY Architecture**: Reusable workflow prevents code duplication
+
+### Monitoring
+
+View sync status:
+1. Go to repository → Actions tab
+2. Click on "Sync Transactions" or "Sync Accounts" workflow
+3. See run history and logs
+
+### Troubleshooting
+
+**Workflow not running:**
+- Check Settings → Actions → General (actions must be enabled)
+- Verify cron syntax is correct
+- Remember: GitHub Actions has 5-minute minimum interval
+
+**Secrets not working:**
+- Ensure secret names match exactly (case-sensitive)
+- For service account key, paste entire JSON file contents
+- Secrets are scoped to the repository/organization
+
+**Cache issues:**
+- Caches expire after 7 days of no access
+- Delete old caches manually if needed (Settings → Actions → Caches)
+
 ## Log Management
 
 ### Create Log Directory

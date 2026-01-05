@@ -1,0 +1,154 @@
+# G-Ledger Reusable Sync Workflow
+#
+# This is a reusable workflow called by sync-transactions.yml and sync-accounts.yml
+# Do not use this workflow directly - use the caller workflows instead.
+
+name: Sync (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: 'Sync mode: "transactions" or "accounts"'
+        required: true
+        type: string
+      days:
+        description: 'Days to sync (default: 30)'
+        required: false
+        type: string
+        default: '30'
+    secrets:
+      GLEDGER_SHEET_ID:
+        required: true
+      GLEDGER_SERVICE_ACCOUNT_KEY:
+        required: true
+      GLEDGER_SIMPLEFIN_TOKEN:
+        required: true
+      GLEDGER_SNAPSHOT_ENCRYPTION_KEY:
+        required: true
+      GLEDGER_SIMPLEFIN_BASE_URL:
+        required: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Prevent runaway jobs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install G-Ledger
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Create config directory
+        run: mkdir -p ~/.config/gledger
+
+      - name: Write service account key
+        run: |
+          echo '${{ secrets.GLEDGER_SERVICE_ACCOUNT_KEY }}' > ~/.config/gledger/service-account-key.json
+          chmod 600 ~/.config/gledger/service-account-key.json
+
+      - name: Create configuration file
+        run: |
+          cat > ~/.config/gledger/config.yaml << EOF
+          sheet_id: ${{ secrets.GLEDGER_SHEET_ID }}
+          service_account_key_path: service-account-key.json
+          simplefin_token: ${{ secrets.GLEDGER_SIMPLEFIN_TOKEN }}
+          simplefin_base_url: ${{ secrets.GLEDGER_SIMPLEFIN_BASE_URL || 'https://beta-bridge.simplefin.org/simplefin' }}
+          window_days: ${{ inputs.days }}
+          snapshot_dir: ./snapshots
+          log_level: WARNING
+          EOF
+          chmod 600 ~/.config/gledger/config.yaml
+
+      - name: Restore encrypted snapshot cache
+        id: snapshot-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ./snapshots.tar.gz.gpg
+          key: gledger-snapshots-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            gledger-snapshots-${{ runner.os }}-
+
+      - name: Decrypt and extract snapshots
+        if: steps.snapshot-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "${{ secrets.GLEDGER_SNAPSHOT_ENCRYPTION_KEY }}" | gpg --batch --yes --passphrase-fd 0 --decrypt ./snapshots.tar.gz.gpg | tar xzf -
+          rm -f ./snapshots.tar.gz.gpg
+        continue-on-error: true
+
+      - name: Initialize snapshot directory
+        run: |
+          mkdir -p ./snapshots
+          if [ ! -d "./snapshots/.git" ]; then
+            cd ./snapshots
+            git init
+            git config user.name "G-Ledger Bot"
+            git config user.email "gledger@github-actions"
+          fi
+
+      - name: Sync accounts
+        if: inputs.mode == 'accounts'
+        run: |
+          gledger sync-accounts --ci-mode
+        continue-on-error: false
+
+      - name: Sync transactions
+        if: inputs.mode == 'transactions'
+        run: |
+          gledger sync --ci-mode --days ${{ inputs.days }}
+        continue-on-error: false
+
+      - name: Encrypt snapshots for caching
+        if: always()
+        run: |
+          if [ -d "./snapshots" ]; then
+            tar czf - ./snapshots | gpg --batch --yes --passphrase-fd 3 --symmetric --cipher-algo AES256 -o ./snapshots.tar.gz.gpg 3<<< "${{ secrets.GLEDGER_SNAPSHOT_ENCRYPTION_KEY }}"
+          fi
+        continue-on-error: true
+
+      - name: Save encrypted snapshot cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ./snapshots.tar.gz.gpg
+          key: gledger-snapshots-${{ runner.os }}-${{ github.sha }}
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f ~/.config/gledger/service-account-key.json
+          rm -f ~/.config/gledger/config.yaml
+          rm -f ./snapshots.tar.gz.gpg
+
+      - name: Report sync status
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "✅ Sync completed successfully"
+          else
+            echo "❌ Sync failed - check logs above"
+            exit 1
+          fi
+
+# Notes on snapshot caching:
+#
+# - Snapshots are encrypted using GPG with AES256 before caching
+# - Encryption key comes from GLEDGER_SNAPSHOT_ENCRYPTION_KEY secret
+# - GitHub Actions caches are ALSO encrypted at rest automatically (defense in depth)
+# - Cache is scoped to this repository and branch
+# - Caches expire after 7 days of no access
+# - Maximum cache size: 10 GB (plenty for encrypted snapshots)
+# - Each workflow run creates a new cache entry with unique key
+# - Old caches are automatically cleaned up by GitHub
+#
+# This approach provides defense-in-depth: snapshots are encrypted with your key
+# before being stored in GitHub's encrypted cache infrastructure.

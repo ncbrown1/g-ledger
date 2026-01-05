@@ -111,7 +111,12 @@ def bootstrap_sheet(config, yes):
     help="Path to configuration file (default: searches standard locations)",
 )
 @click.option("--list-only", is_flag=True, help="Only list accounts without syncing to sheet")
-def sync_accounts(config, list_only):
+@click.option(
+    "--ci-mode",
+    is_flag=True,
+    help="Minimal output for CI/automation (reduces sensitive data in logs)",
+)
+def sync_accounts(config, list_only, ci_mode):
     """Sync SimpleFIN accounts to Google Sheet.
 
     Fetches accounts from SimpleFIN and updates the Accounts tab.
@@ -119,11 +124,12 @@ def sync_accounts(config, list_only):
     Existing account metadata is updated, but user configuration is preserved.
 
     Use --list-only to preview accounts without making changes.
+    Use --ci-mode for automated/CI environments to minimize log output.
     """
     try:
         # Load config
         cfg = Config.load(config)
-        setup_logging(cfg.log_level)
+        setup_logging("WARNING" if ci_mode else cfg.log_level)
         logger = get_logger(__name__)
 
         logger.info("Starting account sync...")
@@ -140,17 +146,20 @@ def sync_accounts(config, list_only):
                 click.echo("No accounts found in SimpleFIN")
                 return
 
-            click.echo(f"\n✓ Found {len(accounts)} SimpleFIN accounts:\n")
-            for acc in accounts:
-                click.echo(f"  ID: {acc['id']}")
-                click.echo(f"    Name: {acc['name']}")
-                click.echo(f"    Institution: {acc['org_name']} ({acc['institution']})")
-                click.echo(f"    Currency: {acc['currency']}")
-                click.echo(f"    Balance: {acc['balance']}")
-                click.echo(f"    Available: {acc['available_balance']}")
-                click.echo()
+            if ci_mode:
+                click.echo(f"✓ Found {len(accounts)} accounts")
+            else:
+                click.echo(f"\n✓ Found {len(accounts)} SimpleFIN accounts:\n")
+                for acc in accounts:
+                    click.echo(f"  ID: {acc['id']}")
+                    click.echo(f"    Name: {acc['name']}")
+                    click.echo(f"    Institution: {acc['org_name']} ({acc['institution']})")
+                    click.echo(f"    Currency: {acc['currency']}")
+                    click.echo(f"    Balance: {acc['balance']}")
+                    click.echo(f"    Available: {acc['available_balance']}")
+                    click.echo()
 
-            click.echo("Run without --list-only to sync these accounts to your sheet.")
+                click.echo("Run without --list-only to sync these accounts to your sheet.")
         else:
             # Sync accounts
             sheets_client = SheetsClient(cfg.service_account_key_path, cfg.sheet_id)
@@ -158,35 +167,45 @@ def sync_accounts(config, list_only):
             account_sync = AccountSyncService(sheet_repo, simplefin_client)
 
             # Create backup before sync
-            logger.info("Creating pre-sync backup...")
+            if not ci_mode:
+                logger.info("Creating pre-sync backup...")
             snapshot_repo = SnapshotRepository(cfg.snapshot_dir)
             try:
                 accounts = sheet_repo.read_accounts(enabled_only=False)
                 transactions = sheet_repo.read_transactions()
                 snapshot_repo.create_snapshot(accounts, transactions, sync_result=None)
-                click.echo("  ✓ Backup created")
+                if not ci_mode:
+                    click.echo("  ✓ Backup created")
             except Exception as e:
                 logger.warning(f"Failed to create backup: {e}")
-                click.echo(f"  ⚠ Backup failed (continuing anyway): {e}")
+                if not ci_mode:
+                    click.echo(f"  ⚠ Backup failed (continuing anyway): {e}")
 
             result = account_sync.sync_accounts()
 
             # Display results
-            click.echo("\n✓ Account sync completed")
-            click.echo(f"  New accounts: {result.new_count}")
-            click.echo(f"  Updated accounts: {result.updated_count}")
-            click.echo(f"  Unchanged: {result.unchanged_count}")
+            if ci_mode:
+                click.echo(
+                    f"✓ Synced: {result.new_count} new, {result.updated_count} updated, {result.unchanged_count} unchanged"
+                )
+                if result.errors:
+                    click.echo(f"✗ Errors: {len(result.errors)}", err=True)
+            else:
+                click.echo("\n✓ Account sync completed")
+                click.echo(f"  New accounts: {result.new_count}")
+                click.echo(f"  Updated accounts: {result.updated_count}")
+                click.echo(f"  Unchanged: {result.unchanged_count}")
 
-            if result.new_count > 0:
-                click.echo(f"\n  ⚠ {result.new_count} new account(s) added as DISABLED.")
-                click.echo("    Open the Accounts tab and:")
-                click.echo("    1. Set 'enabled' to TRUE to start syncing transactions")
-                click.echo("    2. Set 'ignored' to TRUE for accounts to show balance as $0.00")
+                if result.new_count > 0:
+                    click.echo(f"\n  ⚠ {result.new_count} new account(s) added as DISABLED.")
+                    click.echo("    Open the Accounts tab and:")
+                    click.echo("    1. Set 'enabled' to TRUE to start syncing transactions")
+                    click.echo("    2. Set 'ignored' to TRUE for accounts to show balance as $0.00")
 
-            if result.errors:
-                click.echo(f"\n  Errors: {len(result.errors)}", err=True)
-                for error in result.errors[:5]:
-                    click.echo(f"    - {error}", err=True)
+                if result.errors:
+                    click.echo(f"\n  Errors: {len(result.errors)}", err=True)
+                    for error in result.errors[:5]:
+                        click.echo(f"    - {error}", err=True)
 
     except FileNotFoundError as e:
         click.echo(f"✗ Error: {e}", err=True)
@@ -211,7 +230,12 @@ def sync_accounts(config, list_only):
     help="Number of days to fetch (overrides config). Note: SimpleFIN typically provides 90 days max (varies by institution)",
 )
 @click.option("--dry-run", is_flag=True, help="Preview changes without writing to sheet")
-def sync(config, days, dry_run):
+@click.option(
+    "--ci-mode",
+    is_flag=True,
+    help="Minimal output for CI/automation (reduces sensitive data in logs)",
+)
+def sync(config, days, dry_run, ci_mode):
     """Sync SimpleFIN transactions to Google Sheet.
 
     Fetches transactions for enabled accounts, matches with existing sheet data,
@@ -222,7 +246,7 @@ def sync(config, days, dry_run):
     try:
         # Load config
         cfg = Config.load(config)
-        setup_logging(cfg.log_level)
+        setup_logging("WARNING" if ci_mode else cfg.log_level)
         logger = get_logger(__name__)
 
         if days:
@@ -238,7 +262,8 @@ def sync(config, days, dry_run):
 
         # Create snapshot before sync (unless dry run)
         if not dry_run:
-            logger.info("Creating pre-sync snapshot...")
+            if not ci_mode:
+                logger.info("Creating pre-sync snapshot...")
             snapshot_repo = SnapshotRepository(cfg.snapshot_dir)
             accounts = sheet_repo.read_accounts(enabled_only=False)
             transactions = sheet_repo.read_transactions()
@@ -249,26 +274,36 @@ def sync(config, days, dry_run):
 
         # Create post-sync snapshot (unless dry run)
         if not dry_run and (result.new_count > 0 or result.updated_count > 0):
-            logger.info("Creating post-sync snapshot...")
+            if not ci_mode:
+                logger.info("Creating post-sync snapshot...")
             accounts = sheet_repo.read_accounts(enabled_only=False)
             transactions = sheet_repo.read_transactions()
             commit_hash = snapshot_repo.create_snapshot(accounts, transactions, sync_result=result)
-            click.echo(f"  Snapshot: {commit_hash[:8]}")
+            if not ci_mode:
+                click.echo(f"  Snapshot: {commit_hash[:8]}")
 
         # Display results
-        click.echo("\n✓ Sync completed")
-        click.echo(f"  New transactions: {result.new_count}")
-        click.echo(f"  Updated transactions: {result.updated_count}")
-        click.echo(f"  Unchanged: {result.unchanged_count}")
-        click.echo(f"  Needs attention: {result.review_flagged_count}")
+        if ci_mode:
+            status = "✓" if result.error_count == 0 else "✗"
+            click.echo(
+                f"{status} Sync: {result.new_count} new, {result.updated_count} updated, {result.review_flagged_count} need review"
+            )
+            if result.error_count > 0:
+                click.echo(f"✗ Errors: {result.error_count}", err=True)
+        else:
+            click.echo("\n✓ Sync completed")
+            click.echo(f"  New transactions: {result.new_count}")
+            click.echo(f"  Updated transactions: {result.updated_count}")
+            click.echo(f"  Unchanged: {result.unchanged_count}")
+            click.echo(f"  Needs attention: {result.review_flagged_count}")
 
-        if result.error_count > 0:
-            click.echo(f"  Errors: {result.error_count}", err=True)
-            for error in result.errors[:5]:  # Show first 5 errors
-                click.echo(f"    - {error}", err=True)
+            if result.error_count > 0:
+                click.echo(f"  Errors: {result.error_count}", err=True)
+                for error in result.errors[:5]:  # Show first 5 errors
+                    click.echo(f"    - {error}", err=True)
 
-        if dry_run:
-            click.echo("\n  (Dry run - no changes written)")
+            if dry_run:
+                click.echo("\n  (Dry run - no changes written)")
 
     except FileNotFoundError as e:
         click.echo(f"✗ Error: {e}", err=True)
