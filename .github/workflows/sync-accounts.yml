@@ -47,9 +47,9 @@
 name: Sync Accounts
 
 on:
-  # Run once weekly on Sundays at 3am UTC
+  # Run once weekly on Sundays at 2pm UTC (6am pst/7am pdt)
   schedule:
-    - cron: '0 3 * * 0'
+    - cron: '0 14 * * *'
 
   # Allow manual triggering
   workflow_dispatch: {}
